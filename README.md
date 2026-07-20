@@ -36,6 +36,20 @@ To be updated
 
 ## Cocotb Verification
 
+Install verilator
+
+```
+Verilator 5.044
+git clone https://github.com/verilator/verilator.git
+cd verilator
+git checkout v5.044
+autoconf
+./configure
+make -j8
+export PATH=xxx/verilator/bin:$PATH
+```
+
+
 run script
 
 ```
