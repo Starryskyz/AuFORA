@@ -10,7 +10,7 @@ env script
 conda create -n aufora python=3.12
 conda activate aufora
 conda install -c conda-forge openjdk=8 --no-update-deps
-conda install sbt --no-update-deps
+conda install -c conda-forge sbt --no-update-deps
 pip install "cocotb~=1.9.2"
 pip install cocotbext-axi
 pip install numpy
