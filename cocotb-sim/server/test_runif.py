@@ -744,11 +744,24 @@ class DeviceManager:
                 # end @jhlou
             return
 
-        handler.total_tiles = 1 + (
-            handler.max_pe_usage_addr // self.device.tile_pe_address
-        )
+        # Mixed-grained configurations include fine-grained network blocks in
+        # a separate configuration-address region.  Therefore the maximum
+        # configuration address cannot be used to infer how many CGRA tiles
+        # are required.  The mapper-provided tile enable mask is the source of
+        # truth; bit_length preserves the contiguous allocation span needed by
+        # the relocation logic (for example, 0b010 requires a two-tile span).
+        tile_mask = 0
+        for config in handler.configs:
+            config_mask = int.from_bytes(bytes(config.tile_en), "little")
+            tile_mask |= config_mask
+
+        if tile_mask == 0:
+            raise ValueError("configuration has an empty tile enable mask")
+
+        handler.total_tiles = tile_mask.bit_length()
         self.log.debug(
-            f"try to alloc {handler.total_tiles} tiles on device {self.device_id}"
+            f"try to alloc {handler.total_tiles} tiles "
+            f"(tile mask 0x{tile_mask:x}) on device {self.device_id}"
         )
         self.log.debug(
             f"device {self.device_id}: tile free list {self.tile_num_idle} {self.tile_free_list}"
@@ -756,9 +769,6 @@ class DeviceManager:
         self.log.debug(
             f"device {self.device_id}:  cfg free list {self.cfg_spm_idle} {self.cfg_free_list}"
         )
-        if handler.total_tiles == self.device.tile_num + 1:
-            handler.total_tiles -= 1
-            self.log.debug(f"this cfg includes the additional gibs")
         if (
             handler.total_tiles > self.tile_num_idle
             or handler.config_total_size > self.cfg_spm_idle
@@ -1392,42 +1402,39 @@ class DeviceRuntime:
     async def finish_execution(self, handler: ResourceMappingHandler):
         """Wait until execution finished"""
 
-        def byte_include(a: bytes, b: bytes):
-            for i, x in enumerate(b):
-                if a[i] & x != x:
-                    return False
-            return True
+        device = self._device_managers[handler.device_id].device
+        en_tile_bytes = handler.tile_en_bytes[handler.config_id_current]
+        en_tile_mask = int.from_bytes(en_tile_bytes, "little")
+        done_mask = 0
 
-        reg_len = self._device_managers[
-            handler.device_id
-        ].device.reg_cfg_en_tile_reglength
-
-        # wait until exe is done
-        en_tile = (1 << handler.total_tiles) - 1
-        en_tile = en_tile << handler.offset_starting_tile
-        en_tile = en_tile.to_bytes(reg_len, "little")
-
-        cur_time = cocotb.utils.get_sim_time(units="ns")
-        reg = self._device_exereg[handler.device_id]
-        reg.need_count += 1
-
-        count = 10000
-        while count > 0:
-            if reg.resp_time > cur_time:
-                cur_time = cocotb.utils.get_sim_time(units="ns")
-                if byte_include(reg.exe_reg, en_tile):
-                    break
-                count -= 1
-                if count == 0:
-                    self.log.debug(f"EXE time out")
-                    break
-            await cocotb.triggers.Timer(self._device_fetch_exereg_interval, units="ns")
-
-        reg.need_count -= 1
+        # Read the hardware status directly and apply the enable mask:
+        # every enabled tile must be done; disabled tiles are don't-care.
+        # Idle tiles report done, so first let the start pulse reach the tiles.
+        await cocotb.triggers.Timer(
+            self._device_fetch_exereg_interval, units="ns"
+        )
+        for _ in range(10000):
+            resp = await self.axil.read(
+                device.reg_exe_done_0, device.reg_cfg_en_tile_reglength
+            )
+            done_mask = int.from_bytes(resp.data, "little")
+            if (done_mask & en_tile_mask) == en_tile_mask:
+                break
+            await cocotb.triggers.Timer(
+                self._device_fetch_exereg_interval, units="ns"
+            )
+        else:
+            handler.running = False
+            raise TimeoutError(
+                "CGRA execution timeout: "
+                f"done=0x{done_mask:x}, enable=0x{en_tile_mask:x}"
+            )
 
         handler.exef_time = cocotb.utils.get_sim_time(units="ns")
         self.log.debug(
-            f"EXE.F task, stream {handler.stream_id}, resp {reg.exe_reg.hex()}, tile {en_tile.hex()}, time {handler.exef_time-handler.exes_time} ns."
+            f"EXE.F task, stream {handler.stream_id}, "
+            f"done=0x{done_mask:x}, enable=0x{en_tile_mask:x}, "
+            f"time {handler.exef_time-handler.exes_time} ns."
         )
 
         handler.running = False
