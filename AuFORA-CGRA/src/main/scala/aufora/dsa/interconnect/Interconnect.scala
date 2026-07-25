@@ -423,6 +423,10 @@ class GIB(attrs: mutable.Map[String, Any]) extends Module with IR {
   val numOut = nNWi + nNEi + nSEi + nSWi + numTrack * trackDirections.size
   apply("data_width", width)
   apply("cfg_blk_index", cfgBlkIndex)
+  attrs.get("x").foreach(v => apply("x", v))
+  attrs.get("y").foreach(v => apply("y", v))
+  attrs.get("tile").foreach(v => apply("tile", v))
+  apply("type", if(width == 1) "FGGIB" else "CGGIB")
   apply("num_iopin_list", numIOPinMap) // for debug
   apply("track_reged", trackReged)
   apply("num_input", numIn)

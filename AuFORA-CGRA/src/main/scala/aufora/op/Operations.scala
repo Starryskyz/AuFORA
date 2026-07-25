@@ -328,6 +328,23 @@ object OpInfo {
 		OpInfoMap(op)(1)
 	}
 
+	/** Number of 1-bit operands when the fine-grained network is enabled. */
+	def getFGOperandNum(op: String): Int = {
+		if (CondInitAccOpInfoMap.contains(op)) 2
+		else if (CondAccOpInfoMap.contains(op) || IACCInfoMap.contains(op)) 1
+		else if (op == "SEL") 1
+		else 0
+	}
+
+	/** Wide operands after predicate operands have moved to the FG network. */
+	def getCGOperandNum(op: String): Int = math.max(0, getOperandNum(op) - getFGOperandNum(op))
+
+	def getFGResultNum(op: String): Int = {
+		if (Set("EQ", "NE", "ULT", "ULE", "SLT", "SLE", "FEQ32", "FOLT32", "FOLE32",
+		  "FUNO32", "BFEQ16", "BFOLT16", "BFOLE16", "BFUNO16").contains(op)) 1
+		else 0
+	}
+
 	def getLatency(op: String): Int = {
 		OpInfoMap(op)(2)
 	}
@@ -1482,6 +1499,9 @@ object OpInfo {
 				"OPC" -> OPCMap(op),
 				"numOperands" -> getOperandNum(op),
 				"numRes" -> getResNum(op),
+				"numCGOperands" -> getCGOperandNum(op),
+				"numFGOperands" -> getFGOperandNum(op),
+				"numFGRes" -> getFGResultNum(op),
 				"latency" -> getLatency(op),
 				"commutative" -> isCommutative(op),
 				"accumulative" -> isAccumulative(op)

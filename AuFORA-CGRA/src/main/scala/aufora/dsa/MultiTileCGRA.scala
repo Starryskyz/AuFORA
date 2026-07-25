@@ -27,6 +27,10 @@ class MultiTileCGRA(attrs: mutable.Map[String, Any]) extends Module with IR{
   apply("cfg_data_width", cfgDataWidth)
   apply("cfg_addr_width", cfgAddrWidth)
   apply("cfg_blk_offset", cfgBlkOffset)
+  apply("fine_grained", fgEnable)
+  apply("fg_data_width", 1)
+  apply("fg_cfg_base_block", fgCfgBaseBlock)
+  apply("fg_cfg_block_count", fgCfgBlockCount)
 //  apply("gib_num_track", numTrack)                // for debug
 //  apply("gib_connect_flexibility", fcMap)         // for debug
 //  apply("gib_diag_iopin_connect", diagPinConect)  // for debug
@@ -82,6 +86,10 @@ class MultiTileCGRA(attrs: mutable.Map[String, Any]) extends Module with IR{
     "operations" -> ListBuffer(),
     "num_input_per_operand" -> ListBuffer(),
     "max_delay" -> 4,
+    "fg_enable" -> fgEnable,
+    "max_delay_fg" -> 4,
+    "num_input_lut" -> 0,
+    "num_input_per_fg" -> ListBuffer[Int](),
     "lg_max_lat" -> lgMaxLat,
     "lg_max_wi" -> lgMaxCycles,
     "lg_max_cycles" -> lgMaxCycles,
@@ -127,7 +135,10 @@ class MultiTileCGRA(attrs: mutable.Map[String, Any]) extends Module with IR{
     "ag_nest_levels" -> agNestLevels,
     "lg_max_Init" -> lgMaxInit,
     "max_delay" -> 4,
-    "num_input_per_operand" -> ListBuffer()
+    "num_input_per_operand" -> ListBuffer(),
+    "fg_enable" -> fgEnable,
+    "max_delay_fg" -> 4,
+    "num_input_per_fg" -> ListBuffer[Int]()
   )
 
   // ======= sub_modules attribute ========//
@@ -173,6 +184,27 @@ class MultiTileCGRA(attrs: mutable.Map[String, Any]) extends Module with IR{
   val iobs = new ArrayBuffer[IOB]()
   val pes = new ArrayBuffer[GPE]()
   val gibs = new ArrayBuffer[GIB]()
+
+  val fgPeInputs = if(fgEnable) gpesParam.head.head.num_input_per_fg.sum else 0
+  val fgPeOutputs = if(fgEnable) gpesParam.head.head.num_output_fg else 0
+  val fgIobInputs = if(fgEnable) iobsParam.head.head.num_input_per_fg.sum else 0
+  val fgIobOutputs = if(fgEnable) iobsParam.head.head.num_output_fg else 0
+  if(fgEnable) {
+    require(gpesParam.flatten.forall(_.num_input_per_fg.sum == fgPeInputs),
+      "The first FG implementation requires a uniform PE fine-grained input shape")
+    require(gpesParam.flatten.forall(_.num_output_fg == fgPeOutputs),
+      "The first FG implementation requires a uniform PE fine-grained output shape")
+    require(iobsParam.flatten.forall(_.num_input_per_fg.sum == fgIobInputs),
+      "The first FG implementation requires all top/bottom IOBs to expose FG inputs")
+  }
+  val fgNetworks = if(fgEnable) (0 until tile_num).map { tile =>
+    Module(new FineGrainedTileNetwork(
+      tile_rows, tile_cols, fgPeInputs, fgPeOutputs, fgIobInputs, fgIobOutputs,
+      fgNumTrack, fgTrackRegedMode, fgDiagIopinConnect, fgConnectFlexibility,
+      cfgDataWidth, cfgAddrWidth, cfgBlkOffset,
+      fgCfgBaseBlock + tile * fgGibsPerTile, tile
+    )).suggestName(s"fg_network_tile_${tile}")
+  } else Seq.empty[FineGrainedTileNetwork]
 
   var unconnectedIOBs  = mutable.Map[Int, IOB]() //// iob index -> iob
   var unconnectedGPEs  = mutable.Map[(Int, Int), GPE]() //// GPE x y -> GPE
@@ -241,6 +273,9 @@ class MultiTileCGRA(attrs: mutable.Map[String, Any]) extends Module with IR{
           val iob_param = iob_typemap(iob_type)
           iob_attrs("iob_mode") = iob_param.mode
           iob_attrs("num_input_per_operand") = iob_param.num_input_per_operand
+          iob_attrs("fg_enable") = fgEnable && iob_param.has_io_fg
+          iob_attrs("max_delay_fg") = iob_param.max_delay_fg
+          iob_attrs("num_input_per_fg") = iob_param.num_input_per_fg
           iob_attrs("max_delay") = iobsParam(i)(j).max_delay // do not affect type decision
           iobs += Module(new IOB(iob_attrs)).suggestName(s"iob_${index}")
           // println("iobsindex:", index)
@@ -277,6 +312,9 @@ class MultiTileCGRA(attrs: mutable.Map[String, Any]) extends Module with IR{
           val iob_param = iob_typemap(iob_type)
           iob_attrs("iob_mode") = iob_param.mode
           iob_attrs("num_input_per_operand") = iob_param.num_input_per_operand
+          iob_attrs("fg_enable") = fgEnable && iob_param.has_io_fg
+          iob_attrs("max_delay_fg") = iob_param.max_delay_fg
+          iob_attrs("num_input_per_fg") = iob_param.num_input_per_fg
           iob_attrs("max_delay") = iobsParam(i)(j).max_delay // 不影响类型决定
           iobs += Module(new IOB(iob_attrs)).suggestName(s"iob_${index}")
           if (!iob_type_modid.contains(iob_type)) { // 新的 IOB 类型
@@ -316,6 +354,9 @@ class MultiTileCGRA(attrs: mutable.Map[String, Any]) extends Module with IR{
         val gpe_param = gpe_typemap(gpe_type)
         gpe_attrs("operations") = gpe_param.operations
         gpe_attrs("num_input_per_operand") = gpe_param.num_input_per_operand
+        gpe_attrs("max_delay_fg") = gpe_param.max_delay_fg
+        gpe_attrs("num_input_lut") = gpe_param.num_input_lut
+        gpe_attrs("num_input_per_fg") = gpe_param.num_input_per_fg
         gpe_attrs("max_delay") = gpesParam(i)(j).max_delay  // do not affect type decision
         pes += Module(new GPE(gpe_attrs)).suggestName(s"gpe_${index}")
         if(!gpe_type_modid.contains(gpe_type)){ // new GPE type
@@ -1087,6 +1128,32 @@ class MultiTileCGRA(attrs: mutable.Map[String, Any]) extends Module with IR{
     /// end of config connection
 
   } /// end of multi tile
+
+  // Connect the independent one-bit routing fabric after all legacy PE/IOB
+  // instances have been created.  No FG signal crosses a tile boundary here.
+  fgNetworks.zipWithIndex.foreach { case (network, tile) =>
+    network.io.cfg_en := cfgEnTile(tile)
+    network.io.cfg_addr := cfgAddrTile(tile)
+    network.io.cfg_data := cfgDataTile(tile)
+    for(p <- 0 until tile_rows * tile_cols) {
+      val pe = pes(tile * tile_rows * tile_cols + p)
+      pe.io.in_fg := network.io.pe_in(p)
+      network.io.pe_out(p) := pe.io.out_fg
+    }
+    for(i <- 0 until tile_numIOB) {
+      val iob = iobs(tile * tile_numIOB + i)
+      iob.io.in_fg := network.io.iob_in(i)
+      network.io.iob_out(i) := iob.io.out_fg
+    }
+  }
+  if(fgEnable) {
+    apply("fine_grained_networks", fgNetworks.zipWithIndex.map { case (n, i) =>
+      i -> n.getAttrs
+    }.toMap)
+    val lastFgBlock = fgCfgBaseBlock + fgCfgBlockCount - 1
+    require(lastFgBlock < (1 << (cfgAddrWidth - cfgBlkOffset)),
+      s"Fine-grained configuration block $lastFgBlock exceeds cfg address space")
+  }
   
   // println("sm_id:", sm_id)
   // println("smi_id:", smi_id)
@@ -1119,6 +1186,7 @@ class MultiTileCGRA(attrs: mutable.Map[String, Any]) extends Module with IR{
   blkCfgBits ++= iobs.map(_.sumCfgWidth).toList
   blkCfgBits ++= pes.map(_.sumCfgWidth).toList
   blkCfgBits ++= gibs.map(_.cfgsBit).toList
+  blkCfgBits ++= fgNetworks.flatMap(_.gibs.map(_.cfgsBit)).toList
   val maxCfgDataNum = blkCfgBits.map{ x => (x+cfgDataWidth-1)/cfgDataWidth }.sum
   val cfgEntryBits = cfgDataWidth + attrs("cgra_cfg_addr_width_align").asInstanceOf[Int]
   require(cfgEntryBits > 0, s"Invalid cfg entry width: $cfgEntryBits")

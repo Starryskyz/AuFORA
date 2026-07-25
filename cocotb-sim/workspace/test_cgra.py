@@ -43,6 +43,7 @@ import test_runif
 # from IntVecAdd import IntVecAdd
 from gemm import gemm
 # from fir import fir
+from aff import aff
 
 
 tests_dir = os.path.dirname(__file__)
@@ -99,6 +100,16 @@ async def cgra_run_top_intvecadd(dut) -> None:
                 sum += x[i][k]*y[k][j]
             o[i][j] = 3 *sum+2*o[i][j]
 
+    # c1 = zi32(20)
+    # c2 = zi32(20)
+    # for i in range(0,20):
+    #     if i>10:
+    #         c1[i] = 6
+    #     elif i>5:
+    #         c1[i] = 8
+    #     else:
+    #         c1[i] = 2
+
 
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -121,11 +132,17 @@ async def cgra_run_top_intvecadd(dut) -> None:
     start_time = get_sim_time(units="ns")
     # await IntVecAdd(runtime, a, b, c)
     await gemm(runtime, x, y, oc)
+    # await aff(runtime, c2)
 
     await runtime.synchronize_all()
     await RisingEdge(dut.clk)
 
-
+    # np.testing.assert_array_equal(
+    #     c2,
+    #     c1,
+    #     err_msg=f"AFF result mismatch\nhardware: {c2}\nreference: {c1}",
+    # )
+    # axibus.log.info(f"AFF result check passed: {c2}")
 
     end_time = get_sim_time(units="ns")
     axibus.log.info(f"Sim time: {end_time - start_time} ns")

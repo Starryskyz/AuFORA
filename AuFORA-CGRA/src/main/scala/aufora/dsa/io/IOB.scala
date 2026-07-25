@@ -38,6 +38,11 @@ class IOB(attrs: mutable.Map[String, Any]) extends Module with IR {
   val numInCtrl = { if(mode == FIFO_MODE) 1 else 2 }
   // max delay cycles of the DelayPipe
   val maxDelay = attrs("max_delay").asInstanceOf[Int]
+  val fgEnable = attrs.getOrElse("fg_enable", false).asInstanceOf[Boolean]
+  val numInPerFg = if(fgEnable)
+    attrs("num_input_per_fg").asInstanceOf[ListBuffer[Int]] else ListBuffer[Int]()
+  val numFgIn = numInPerFg.sum
+  val numFgOut = if(fgEnable) 1 else 0
   apply("data_width", width)
   apply("num_input", numIn)
   apply("num_output", numOut)
@@ -46,6 +51,12 @@ class IOB(attrs: mutable.Map[String, Any]) extends Module with IR {
   apply("iob_index", iobIndex)
   apply("iob_mode", mode)
   apply("ag_nest_levels", agNestLevels)
+  apply("fine_grained", fgEnable)
+  apply("num_input_fg", numFgIn)
+  apply("num_output_fg", numFgOut)
+  apply("num_operand_fg", numInPerFg.size)
+  apply("num_input_per_fg", numInPerFg)
+  if(fgEnable) apply("max_delay_fg", attrs("max_delay_fg").asInstanceOf[Int])
   if(mode != FIFO_MODE){ apply("max_delay", maxDelay) }
   // println("[mion]In IOB, hasMaskSram:", hasMaskSram)
 
@@ -62,14 +73,25 @@ class IOB(attrs: mutable.Map[String, Any]) extends Module with IR {
     val en = Input(Bool())
     val in = Input(Vec(numIn, UInt(width.W)))
     val out = Output(Vec(numOut, UInt(width.W)))
+    val in_fg = Input(Vec(numFgIn, UInt(1.W)))
+    val out_fg = Output(Vec(numFgOut, UInt(1.W)))
     val sram = Flipped(new SRAMIO(width, addrWidthSram, hasMaskSram))
   })
 
   val numDelayPipes = { if(mode == FIFO_MODE) 0 else 2 } // FIFO mode, no DelayPipe
-  val ioCtrl = Module(new IOController(width, addrWidthSram, hasMaskSram, mode, lgMaxII, lgMaxLat, lgMaxStride, lgMaxCycles, agNestLevels, addRegSram))
+  val ioCtrl = Module(new IOController(width, addrWidthSram, hasMaskSram, mode, lgMaxII, lgMaxLat,
+    lgMaxStride, lgMaxCycles, agNestLevels, addRegSram, fgEnable))
   val delay_pipe: SharedDelayPipe = {if(numDelayPipes > 0) Module(new SharedDelayPipe(width, maxDelay, numDelayPipes)) else null}
 //  val delay_pipes = Array.fill(numDelayPipes){ Module(new DelayPipe(width, maxDelay)).io }
   val imuxs = numInList.map{ num => Module(new Muxn(width, num)).io } // input MUXs
+  val fgDelay = if(fgEnable) Module(new SharedDelayPipe(1,
+    attrs("max_delay_fg").asInstanceOf[Int], numInPerFg.size)) else null
+  val fgMuxs = if(fgEnable) numInPerFg.map { num => Module(new Muxn(1, num + 2)).io }
+    else ListBuffer()
+  val immOperandWidth = math.max(1, log2Ceil(numInCtrl))
+  val useImm = Wire(Bool())
+  val immOperand = Wire(UInt(immOperandWidth.W))
+  val immValue = Wire(UInt(width.W))
 
 
   // ======= sub_module attribute ========//
@@ -119,6 +141,21 @@ class IOB(attrs: mutable.Map[String, Any]) extends Module with IR {
   val connections = ListBuffer[(Int, String, Int, Int, String, Int)]()
 
   ioCtrl.io.sram <> io.sram
+  if(fgEnable) {
+    var fgOffset = 0
+    fgMuxs.zipWithIndex.foreach { case (mux, operand) =>
+      mux.in(0) := 0.U
+      mux.in(1) := 1.U
+      (0 until numInPerFg(operand)).foreach { i => mux.in(i + 2) := io.in_fg(fgOffset + i) }
+      fgDelay.io.in(operand) := mux.out
+      fgOffset += numInPerFg(operand)
+    }
+    fgDelay.io.en := RegNext(io.en)
+    ioCtrl.io.predicate := fgDelay.io.out(0).asBool
+    io.out_fg(0) := ioCtrl.io.access_valid
+  } else {
+    ioCtrl.io.predicate := false.B
+  }
   // ioCtrl.io.start := io.start
   ioCtrl.io.start := RegNext(io.start)
   io.done := ioCtrl.io.done
@@ -131,15 +168,17 @@ class IOB(attrs: mutable.Map[String, Any]) extends Module with IR {
       in := io.in(offset+j)
       connections.append((smi_id("This")(0), "This", offset+j, smi_id("Muxn")(i), "Muxn", j))
     }
+    val operandValue =
+      Mux(useImm && immOperand === i.U, immValue, imuxs(i).out)
     if(numDelayPipes > 0){
       // delay_pipe.io.en := io.en
       delay_pipe.io.en := RegNext(io.en)
-      delay_pipe.io.in(i) := imuxs(i).out
+      delay_pipe.io.in(i) := operandValue
       ioCtrl.io.in(i) := delay_pipe.io.out(i)
       connections.append((smi_id("Muxn")(i), "Muxn", 0, smi_id("DelayPipe")(0), "DelayPipe", i))
       connections.append((smi_id("DelayPipe")(0), "DelayPipe", i, smi_id("IOController")(0), "IOController", i))
     }else{
-      ioCtrl.io.in(i) := imuxs(i).out
+      ioCtrl.io.in(i) := operandValue
       connections.append((smi_id("Muxn")(i), "Muxn", 0, smi_id("IOController")(0), "IOController", i))
     }
     offset += num
@@ -151,7 +190,12 @@ class IOB(attrs: mutable.Map[String, Any]) extends Module with IR {
   val delayCfgWidth = { if(numDelayPipes > 0) delay_pipe.io.config.getWidth else 0 }// DelayPipe Config width
   val imuxCfgWidthList = imuxs.map{ mux => mux.config.getWidth } // input Muxes
   val imuxCfgWidth = imuxCfgWidthList.sum
-  val sumCfgWidth = ioCtrlCfgWidth + delayCfgWidth + imuxCfgWidth
+  val fgDelayCfgWidth = if(fgEnable) fgDelay.io.config.getWidth else 0
+  val fgMuxCfgWidthList = if(fgEnable) fgMuxs.map(_.config.getWidth) else ListBuffer[Int]()
+  val fgMuxCfgWidth = fgMuxCfgWidthList.sum
+  val immCfgWidth = 1 + immOperandWidth + width
+  val sumCfgWidth = ioCtrlCfgWidth + immCfgWidth + delayCfgWidth +
+    imuxCfgWidth + fgDelayCfgWidth + fgMuxCfgWidth
 
   val cfg = Module(new ConfigMem(sumCfgWidth, 1, cfgDataWidth))
   cfg.io.cfg_en := io.cfg_en && (cfgBlkIndex.U === io.cfg_addr(cfgAddrWidth-1, cfgBlkOffset))
@@ -181,6 +225,28 @@ class IOB(attrs: mutable.Map[String, Any]) extends Module with IR {
   apply("io_controller_cfg_id", ioc_cfg_id)
 
   offset = ioCtrlCfgWidth
+  val immCfgIdBase = next_smi_id + ioCtrl.ioc_cfg_idx.size
+  val useImmLow = offset
+  useImm := cfgOut(useImmLow).asBool
+  configuration += immCfgIdBase -> ("UseImm", useImmLow, useImmLow)
+  offset += 1
+
+  immOperand := cfgOut(offset + immOperandWidth - 1, offset)
+  configuration +=
+    (immCfgIdBase + 1) -> ("ImmOperand",
+      offset + immOperandWidth - 1, offset)
+  offset += immOperandWidth
+
+  immValue := cfgOut(offset + width - 1, offset)
+  configuration +=
+    (immCfgIdBase + 2) -> ("ImmValue", offset + width - 1, offset)
+  offset += width
+  apply("iob_immediate_cfg_id", Map(
+    "UseImm" -> immCfgIdBase,
+    "ImmOperand" -> (immCfgIdBase + 1),
+    "ImmValue" -> (immCfgIdBase + 2)
+  ))
+
   if(delayCfgWidth != 0){
     delay_pipe.io.config := cfgOut(delayCfgWidth+offset-1, offset)
     configuration += smi_id("DelayPipe")(0) -> ("DelayPipe", delayCfgWidth+offset-1, offset)
@@ -194,6 +260,33 @@ class IOB(attrs: mutable.Map[String, Any]) extends Module with IR {
       imuxs(i).config := DontCare
     }
     offset += w
+  }
+
+  if(fgEnable) {
+    val fgConfigLow = offset
+    val fgDelayLow = offset
+    if(fgDelayCfgWidth > 0) {
+      fgDelay.io.config := cfgOut(offset + fgDelayCfgWidth - 1, offset)
+      offset += fgDelayCfgWidth
+    } else fgDelay.io.config := DontCare
+    val fgMuxLow = offset
+    fgMuxs.zip(fgMuxCfgWidthList).foreach { case (mux, w) =>
+      if(w > 0) mux.config := cfgOut(offset + w - 1, offset) else mux.config := DontCare
+      offset += w
+    }
+    apply("fine_grained_configuration", Map(
+      "delay_bits" -> fgDelayCfgWidth,
+      "mux_bits" -> fgMuxCfgWidth
+    ))
+    apply("fine_grained_configuration_ranges", Map(
+      "low" -> fgConfigLow,
+      "high" -> (offset - 1),
+      "delay_low" -> fgDelayLow,
+      "delay_high" -> (fgDelayLow + fgDelayCfgWidth - 1),
+      "mux_low" -> fgMuxLow,
+      "mux_high" -> (fgMuxLow + fgMuxCfgWidth - 1),
+      "mux_widths" -> fgMuxCfgWidthList
+    ))
   }
 
   apply("configuration", configuration)

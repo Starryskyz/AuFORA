@@ -22,9 +22,11 @@ import aufora.common.MacroVar._
  * @param addRegSram     write/read latency, 0 : 0/1; 1 : 1/2; 2 : 1/3; for both FIFO and SRAM modes
  */
 class IOController(dataWidth: Int, addrWidth: Int, hasMask: Boolean, mode: Int, lgMaxII: Int,
-                   lgMaxLat: Int, lgMaxStride: Int, lgMaxCycles: Int, agNestLevels: Int, addRegSram: Int) extends Module {
+                   lgMaxLat: Int, lgMaxStride: Int, lgMaxCycles: Int, agNestLevels: Int,
+                   addRegSram: Int, hasPredicate: Boolean = false) extends Module {
   val numIn = { if(mode == FIFO_MODE) 1 else 2 }
-  val cfgWidth = addrWidth + (lgMaxStride + lgMaxCycles) * agNestLevels + lgMaxII + lgMaxLat + 1 + { if(mode == FIFO_MODE) 0 else 1 }
+  val cfgWidth = addrWidth + (lgMaxStride + lgMaxCycles) * agNestLevels + lgMaxII + lgMaxLat + 1 +
+    { if(mode == FIFO_MODE) 0 else 1 } + { if(hasPredicate) 1 else 0 }
   // ----------- base_addr --- stride --- cycles ---- latency ----- II ---- isStore ----- useAddr -----
   val io = IO(new Bundle{
     val sram = Flipped(new SRAMIO(dataWidth, addrWidth, hasMask))
@@ -33,6 +35,8 @@ class IOController(dataWidth: Int, addrWidth: Int, hasMask: Boolean, mode: Int, 
     val config = Input(UInt(cfgWidth.W))
     val in = Vec(numIn, Input(UInt(dataWidth.W))) // FIFO: 0->data; SRAM: 0->data, 1->address in bytes
     val out = Vec(1, Output(UInt(dataWidth.W)))
+    val predicate = Input(Bool())
+    val access_valid = Output(Bool())
   })
 
   val dataByte = dataWidth/8
@@ -79,6 +83,11 @@ class IOController(dataWidth: Int, addrWidth: Int, hasMask: Boolean, mode: Int, 
       io.config(offset+1).asBool // whether use io.in(1) as address
     }
   }
+  val usePredicate = if(hasPredicate) {
+    val predOffset = offset + 1 + { if(mode == FIFO_MODE) 0 else 1 }
+    ioc_cfg_idx += "UsePredicate" -> (id + 2, predOffset, predOffset)
+    io.config(predOffset).asBool
+  } else false.B
 
   val s_idle :: s_pre_lat :: s_data :: Nil = Enum(3)
   val state = RegInit(s_idle)
@@ -167,7 +176,9 @@ class IOController(dataWidth: Int, addrWidth: Int, hasMask: Boolean, mode: Int, 
     }
   }
 
-  val realEn = (wValid && (wRealValid || useAddr)) || (raValid && (rRealValid || useAddr))
+  val realEnRaw = (wValid && (wRealValid || useAddr)) || (raValid && (rRealValid || useAddr))
+  val realEn = realEnRaw && (!usePredicate || io.predicate)
+  io.access_valid := realEn
 
   when(!launch){
     genAddrReg := Cat(0.S(1.W), baseAddr).asSInt

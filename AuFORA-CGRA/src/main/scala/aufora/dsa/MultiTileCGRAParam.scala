@@ -12,15 +12,25 @@ import aufora.op._
 // GPE parameters
 case class GpeParam(
   max_delay : Int = 4,
+  max_delay_fg : Int = 4,
+  num_input_lut : Int = 3,
   operations : ListBuffer[String] = ListBuffer("PASS", "ADD", "SUB"),
   from_dir : List[Int] =  List(NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST),
   to_dir : List[Int] =  List(NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST)
 ){
   val num_input_per_operand  = ListBuffer.fill(operations.map(OpInfo.getOperandNum(_)).max){from_dir.size}
   val num_output : Int = 1
+  // Two predicate operands are reserved for conditional enable/init.  LUT inputs
+  // share the same fine-grained routing fabric.
+  val num_fg_operands: Int = math.max(2, num_input_lut)
+  val num_input_per_fg = ListBuffer.fill(num_fg_operands){from_dir.size}
+  val num_output_fg: Int = 2 // ALU predicate and registered LUT result
 
   def == (gpe : GpeParam): Boolean = {
-    operations == gpe.operations &&  num_input_per_operand == gpe.num_input_per_operand
+    operations == gpe.operations &&
+    num_input_per_operand == gpe.num_input_per_operand &&
+    num_input_per_fg == gpe.num_input_per_fg &&
+    num_output_fg == gpe.num_output_fg
   }
 }
 
@@ -33,7 +43,9 @@ case class GpeParam(
 // IOB parameters
 case class IobParam(
   mode : Int = SRAM_MODE,
-  max_delay : Int = 4
+  max_delay : Int = 4,
+  has_io_fg : Boolean = true,
+  max_delay_fg : Int = 4
 ) {
 
   val num_input_per_operand = {
@@ -46,9 +58,12 @@ case class IobParam(
   }
 
   val num_output : Int = 1
+  val num_input_per_fg: ListBuffer[Int] =
+    if(has_io_fg) ListBuffer(2) else ListBuffer[Int]()
+  val num_output_fg: Int = if(has_io_fg) 1 else 0
 
   def == (iob : IobParam): Boolean = {
-    mode == iob.mode
+    mode == iob.mode && has_io_fg == iob.has_io_fg
   }
 
 }
@@ -104,6 +119,11 @@ case class MultiTileCgraParam(attrs: mutable.Map[String, Any]){
   val tile_cols = attrs("tile_num_column").asInstanceOf[Int]   // PE number in a colum
   val tile_num  = attrs("cgra_tile_num").asInstanceOf[Int]   // PE number in a colum
   val dataWidth = attrs("cgra_data_width").asInstanceOf[Int] // data width in bit
+  val fgEnable = attrs.getOrElse("cgra_fg_enable", false).asInstanceOf[Boolean]
+  val fgNumTrack = attrs.getOrElse("cgra_fg_gib_num_track", 1).asInstanceOf[Int]
+  val fgTrackRegedMode = attrs.getOrElse("cgra_fg_gib_track_reged_mode", 0).asInstanceOf[Int]
+  val fgDiagIopinConnect = attrs.getOrElse("cgra_fg_gib_diag_iopin_connect", true).asInstanceOf[Boolean]
+  val fgConnectFlexibility = attrs.getOrElse("cgra_fg_gib_connect_flexibility", List(2, 2, 4)).asInstanceOf[List[Int]]
   // cfgParams
   val cfgDataWidth = attrs("cgra_cfg_data_width").asInstanceOf[Int]
   val cfgAddrWidth = attrs("cgra_cfg_addr_width").asInstanceOf[Int]
@@ -117,7 +137,8 @@ case class MultiTileCgraParam(attrs: mutable.Map[String, Any]){
   val gpeOutToDir= attrs("cgra_gpe_out_to_dir").asInstanceOf[List[Int]]
   val gpesSpec = attrs("cgra_gpes").asInstanceOf[ListBuffer[ListBuffer[GpeSpec]]]
   val gpesParam = gpesSpec.map{ buf =>
-    buf.map{ spec => GpeParam(spec.max_delay, spec.operations, gpeInFromDir, gpeOutToDir) }
+    buf.map{ spec => GpeParam(spec.max_delay, spec.max_delay_fg, spec.num_input_lut,
+      spec.operations, gpeInFromDir, gpeOutToDir) }
   }
   val gpe_operations = gpesSpec.flatten.map(_.operations).reduce(_++_).distinct
   // different types of GPEs (as submodules)
@@ -166,7 +187,7 @@ case class MultiTileCgraParam(attrs: mutable.Map[String, Any]){
   // parameters of IOBs in 2D
   val iobsSpec = attrs("cgra_iobs").asInstanceOf[ListBuffer[ListBuffer[IobSpec]]]
   val iobsParam = iobsSpec.map{ buf =>
-    buf.map{ spec => IobParam(spec.mode, spec.max_delay) }
+    buf.map{ spec => IobParam(spec.mode, spec.max_delay, fgEnable && spec.has_io_fg, spec.max_delay_fg) }
   }
   val iob_modes = iobsSpec.flatten.map(_.mode).distinct
   val iob_operations = ListBuffer[String]()
@@ -184,6 +205,12 @@ case class MultiTileCgraParam(attrs: mutable.Map[String, Any]){
   // the type of each IOB (as instance)
   val iob_typemap : mutable.Map[Int, IobParam] =  mutable.Map() // [type-id, IobParam]
   val iob_posmap : mutable.Map[(Int, Int, Int), Int] = mutable.Map() // [(tile, x, y), type-id]
+
+  // Fine-grained GIBs use a disjoint block-index range so that the existing
+  // coarse-grained layout and bitstreams remain stable.
+  val fgGibsPerTile = (tile_rows + 1) * (tile_cols + 1)
+  val fgCfgBaseBlock = tile_numSubModules * tile_num + tile_rows + 2
+  val fgCfgBlockCount = if(fgEnable) fgGibsPerTile * tile_num else 0
 
 
   val lgMaxLat = attrs("cgra_lg_max_lat").asInstanceOf[Int]            // log2(max in/out latency)

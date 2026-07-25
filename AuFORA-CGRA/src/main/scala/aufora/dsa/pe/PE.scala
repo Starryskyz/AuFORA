@@ -56,6 +56,16 @@ class GPE(attrs: mutable.Map[String, Any]) extends Module with IR {
   // val aluCfgWidth = log2Ceil(OPC.numOPC) // ALU Config width
   val numInPerOperand = attrs("num_input_per_operand").asInstanceOf[ListBuffer[Int]]
 
+  // Optional 1-bit predicate/LUT datapath.  It is deliberately additive: the
+  // existing wide ALU datapath and its configuration encoding stay intact.
+  val fgEnable = attrs.getOrElse("fg_enable", false).asInstanceOf[Boolean]
+  val numInputLut = if(fgEnable) attrs.getOrElse("num_input_lut", 0).asInstanceOf[Int] else 0
+  val numInPerFg = if(fgEnable)
+    attrs("num_input_per_fg").asInstanceOf[ListBuffer[Int]] else ListBuffer[Int]()
+  val numFgOperands = numInPerFg.size
+  val numFgIn = numInPerFg.sum
+  val numFgOut = if(fgEnable) 2 else 0
+
   // println("aluOperandNum", aluOperandNum)
   // println("numInPerOperand", numInPerOperand)
   // max delay cycles of the DelayPipe
@@ -70,6 +80,13 @@ class GPE(attrs: mutable.Map[String, Any]) extends Module with IR {
   apply("num_operands", aluOperandNum)
   apply("num_input", numInPerOperand.sum)
   apply("num_output", 1)
+  apply("fine_grained", fgEnable)
+  apply("num_input_fg", numFgIn)
+  apply("num_output_fg", numFgOut)
+  apply("num_input_lut", numInputLut)
+  apply("num_operand_fg", numFgOperands)
+  apply("num_input_per_fg", numInPerFg)
+  if(fgEnable) apply("max_delay_fg", attrs("max_delay_fg").asInstanceOf[Int])
   apply("cfg_blk_index", cfgBlkIndex)
 //  apply("num_rf_reg", numRegRF)
   apply("operations", ops)
@@ -86,6 +103,8 @@ class GPE(attrs: mutable.Map[String, Any]) extends Module with IR {
     val en = Input(Bool())
     val in = Input(Vec(numInPerOperand.sum, UInt(width.W)))   
     val out = Output(Vec(1, UInt(width.W))) 
+    val in_fg = Input(Vec(numFgIn, UInt(1.W)))
+    val out_fg = Output(Vec(numFgOut, UInt(1.W)))
   })
   val aluOps = ops.map(OpInfo.getALUOp(_)).distinct
   // println("aluOps: ", aluOps)
@@ -105,6 +124,13 @@ class GPE(attrs: mutable.Map[String, Any]) extends Module with IR {
 //  }
   //val imuxs = numInPerOperand.map{ num => Module(new Muxn(width, num+extraMuxIns)).io } // input + const + (rf_out)
   val imuxs = numInPerOperand.map{ num => Module(new Muxn(width, num+1)).io } // input + const
+  val fgDelay = if(fgEnable) Module(new SharedDelayPipe(1,
+    attrs("max_delay_fg").asInstanceOf[Int], numFgOperands)) else null
+  val fgMuxs = if(fgEnable) numInPerFg.map { num =>
+    Module(new Muxn(1, num + 3)).io // constant 0/1, routed inputs, LUT feedback
+  } else ListBuffer()
+  val fgLut = if(fgEnable && numInputLut > 0) Module(new LUT(1, numInputLut)) else null
+  val fgLutReg = if(fgEnable && numInputLut > 0) Module(new RF(1, 1, 1, 1)) else null
   val opcWidth = OpInfo.ALUOPCWidth
   val opc = Wire(UInt(opcWidth.W))
 
@@ -170,6 +196,30 @@ class GPE(attrs: mutable.Map[String, Any]) extends Module with IR {
     alu.io.launch := false.B
   }
   io.out(0) := dmr.io.out(0)
+  if(fgEnable) {
+    var fgOffset = 0
+    fgMuxs.zipWithIndex.foreach { case (mux, operand) =>
+      val routedCount = numInPerFg(operand)
+      mux.in(0) := 0.U
+      mux.in(1) := 1.U
+      (0 until routedCount).foreach { i => mux.in(i + 2) := io.in_fg(fgOffset + i) }
+      mux.in(routedCount + 2) := (if(numInputLut > 0) fgLutReg.io.out(0) else 0.U)
+      fgDelay.io.in(operand) := mux.out
+      fgOffset += routedCount
+    }
+    fgDelay.io.en := RegNext(io.en)
+    io.out_fg(0) := RegNext(alu.io.out(0), 0.U)
+    if(numInputLut > 0) {
+      fgLut.io.en := RegNext(io.en)
+      fgLut.io.in := Cat((0 until numInputLut).reverse.map(i => fgDelay.io.out(i)))
+      fgLutReg.io.en := RegNext(io.en)
+      fgLutReg.io.config := DontCare
+      fgLutReg.io.in(0) := fgLut.io.out
+      io.out_fg(1) := fgLutReg.io.out(0)
+    } else {
+      io.out_fg(1) := 0.U
+    }
+  }
   if(useDualDMRInput){
     dmr.io.in(1) := delay_pipe.io.out(1)
 //    connections.append((smi_id("DelayPipeCG")(0), "DelayPipeCG", 1, smi_id("DMR")(0), "DMR", 1, width))
@@ -193,9 +243,9 @@ class GPE(attrs: mutable.Map[String, Any]) extends Module with IR {
     dmr.io.start := RegNext(io.start)
     dmr.io.mode := OpInfo.getAccMode(opc)
     if (hasCondAcc) { // do not record connections
-      dmr.io.con_en := delay_pipe.io.out(1)(0)
+      dmr.io.con_en := (if(fgEnable) fgDelay.io.out(0) else delay_pipe.io.out(1)(0))
       if (operandNum > 2) {
-        dmr.io.init := delay_pipe.io.out(2)(0)
+        dmr.io.init := (if(fgEnable) fgDelay.io.out(1) else delay_pipe.io.out(2)(0))
       }
     }
   }
@@ -288,7 +338,12 @@ class GPE(attrs: mutable.Map[String, Any]) extends Module with IR {
   val delayCfgWidth = delay_pipe.io.config.getWidth
   val imuxCfgWidthList = imuxs.map{ mux => mux.config.getWidth } // input Muxes
   val imuxCfgWidth = imuxCfgWidthList.sum
-  val sumCfgWidth = constCfgWidth + opcWidth + rfCfgWidth + delayCfgWidth + imuxCfgWidth
+  val fgDelayCfgWidth = if(fgEnable) fgDelay.io.config.getWidth else 0
+  val fgMuxCfgWidthList = if(fgEnable) fgMuxs.map(_.config.getWidth) else ListBuffer[Int]()
+  val fgMuxCfgWidth = fgMuxCfgWidthList.sum
+  val fgLutCfgWidth = if(fgEnable && numInputLut > 0) fgLut.io.config.getWidth else 0
+  val sumCfgWidth = constCfgWidth + opcWidth + rfCfgWidth + delayCfgWidth + imuxCfgWidth +
+    fgDelayCfgWidth + fgMuxCfgWidth + fgLutCfgWidth
 
   val cfg = Module(new ConfigMem(sumCfgWidth, 1, cfgDataWidth))
   cfg.io.cfg_en := io.cfg_en && (cfgBlkIndex.U === io.cfg_addr(cfgAddrWidth-1, cfgBlkOffset))
@@ -386,6 +441,45 @@ class GPE(attrs: mutable.Map[String, Any]) extends Module with IR {
     dmr.io.config := DontCare
   }
   offset += rfCfgWidth
+
+  // Fine-grained configuration is appended after the legacy PE fields so
+  // disabling FG preserves the original bit layout exactly.
+  if(fgEnable) {
+    val fgConfigLow = offset
+    val fgDelayLow = offset
+    if(fgDelayCfgWidth > 0) {
+      fgDelay.io.config := cfgOut(offset + fgDelayCfgWidth - 1, offset)
+      offset += fgDelayCfgWidth
+    } else fgDelay.io.config := DontCare
+
+    val fgMuxLow = offset
+    fgMuxs.zip(fgMuxCfgWidthList).foreach { case (mux, w) =>
+      if(w > 0) mux.config := cfgOut(offset + w - 1, offset) else mux.config := DontCare
+      offset += w
+    }
+
+    val fgLutLow = offset
+    if(numInputLut > 0) {
+      fgLut.io.config := cfgOut(offset + fgLutCfgWidth - 1, offset)
+      offset += fgLutCfgWidth
+    }
+    apply("fine_grained_configuration", Map(
+      "delay_bits" -> fgDelayCfgWidth,
+      "mux_bits" -> fgMuxCfgWidth,
+      "lut_bits" -> fgLutCfgWidth
+    ))
+    apply("fine_grained_configuration_ranges", Map(
+      "low" -> fgConfigLow,
+      "high" -> (offset - 1),
+      "delay_low" -> fgDelayLow,
+      "delay_high" -> (fgDelayLow + fgDelayCfgWidth - 1),
+      "mux_low" -> fgMuxLow,
+      "mux_high" -> (fgMuxLow + fgMuxCfgWidth - 1),
+      "mux_widths" -> fgMuxCfgWidthList,
+      "lut_low" -> fgLutLow,
+      "lut_high" -> (fgLutLow + fgLutCfgWidth - 1)
+    ))
+  }
 
   apply("configuration", configuration)
 }

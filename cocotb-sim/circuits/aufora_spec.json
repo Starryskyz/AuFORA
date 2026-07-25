@@ -3,43 +3,68 @@
   "cgra_lg_max_ii" : 4,
   "cgra_gpes" : [ [ {
     "max_delay" : 10,
-    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
+    "max_delay_fg" : 8,
+    "num_input_lut" : 3,
+    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "NOT", "ULE", "ULT", "SLT", "SLE", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
   }, {
     "max_delay" : 10,
-    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
+    "max_delay_fg" : 8,
+    "num_input_lut" : 3,
+    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "NOT", "ULE", "ULT", "SLT", "SLE", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
   } ], [ {
     "max_delay" : 10,
-    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
+    "max_delay_fg" : 8,
+    "num_input_lut" : 3,
+    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "NOT", "ULE", "ULT", "SLT", "SLE", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
   }, {
     "max_delay" : 10,
-    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
+    "max_delay_fg" : 8,
+    "num_input_lut" : 3,
+    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "NOT", "ULE", "ULT", "SLT", "SLE", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
   } ], [ {
     "max_delay" : 10,
-    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
+    "max_delay_fg" : 8,
+    "num_input_lut" : 3,
+    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "NOT", "ULE", "ULT", "SLT", "SLE", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
   }, {
     "max_delay" : 10,
-    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
+    "max_delay_fg" : 8,
+    "num_input_lut" : 3,
+    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "NOT", "ULE", "ULT", "SLT", "SLE", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
   } ], [ {
     "max_delay" : 10,
-    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
+    "max_delay_fg" : 8,
+    "num_input_lut" : 3,
+    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "NOT", "ULE", "ULT", "SLT", "SLE", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
   }, {
     "max_delay" : 10,
-    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
+    "max_delay_fg" : 8,
+    "num_input_lut" : 3,
+    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "NOT", "ULE", "ULT", "SLT", "SLE", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
   } ], [ {
     "max_delay" : 10,
-    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
+    "max_delay_fg" : 8,
+    "num_input_lut" : 3,
+    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "NOT", "ULE", "ULT", "SLT", "SLE", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
   }, {
     "max_delay" : 10,
-    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
+    "max_delay_fg" : 8,
+    "num_input_lut" : 3,
+    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "NOT", "ULE", "ULT", "SLT", "SLE", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
   } ], [ {
     "max_delay" : 10,
-    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
+    "max_delay_fg" : 8,
+    "num_input_lut" : 3,
+    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "NOT", "ULE", "ULT", "SLT", "SLE", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
   }, {
     "max_delay" : 10,
-    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
+    "max_delay_fg" : 8,
+    "num_input_lut" : 3,
+    "operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "NOT", "ULE", "ULT", "SLT", "SLE", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ]
   } ] ],
   "id_width" : 6,
   "tile_num_row" : 6,
+  "cgra_fg_gib_diag_iopin_connect" : true,
   "cgra_tile_num" : 3,
   "system_bus_beat_bits" : 128,
   "cgra_gpe_max_delay" : 10,
@@ -51,23 +76,33 @@
   "cgra_lg_max_lat" : 6,
   "cgra_iobs" : [ [ {
     "mode" : 1,
-    "max_delay" : 10
+    "max_delay" : 10,
+    "has_io_fg" : true,
+    "max_delay_fg" : 8
   }, {
     "mode" : 1,
-    "max_delay" : 10
+    "max_delay" : 10,
+    "has_io_fg" : true,
+    "max_delay_fg" : 8
   } ], [ {
     "mode" : 1,
-    "max_delay" : 10
+    "max_delay" : 10,
+    "has_io_fg" : true,
+    "max_delay_fg" : 8
   }, {
     "mode" : 1,
-    "max_delay" : 10
+    "max_delay" : 10,
+    "has_io_fg" : true,
+    "max_delay_fg" : 8
   } ] ],
   "rs_load_queue_depth" : 8,
   "cgra_iob_sram_addr_width" : 17,
-  "cgra_gpe_operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ],
+  "cgra_iob_max_delay_fg" : 8,
+  "cgra_gpe_operations" : [ "PASS", "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", "AND", "OR", "SLT", "SLE", "EQ", "NOT", "ULE", "ULT", "SLT", "SLE", "SEL", "FMUL32", "FSUB32", "FADD32", "FACC32", "ISEL" ],
   "axilite_datawidth" : 32,
   "cgra_gib_diag_iopin_connect" : true,
   "operation_set_filename" : "operations.json",
+  "cgra_iob_has_io_fg" : true,
   "dma_num_req_in_flight" : 8,
   "cgra_iob_sram_add_reg" : 2,
   "tile_spad_num_banks" : 4,
@@ -76,6 +111,7 @@
   "cgra_data_width" : 32,
   "cgra_gpe_out_to_dir" : [ 4, 5, 7, 6 ],
   "cgra_iob_max_delay" : 10,
+  "cgra_fg_gib_num_track" : 2,
   "cgra_gibs" : [ [ {
     "diag_iopin_connect" : true,
     "fc_list" : [ 2, 2, 4 ]
@@ -147,6 +183,8 @@
   "cgra_iob_sram_has_mask" : true,
   "cgra_lg_max_stride" : 20,
   "cgra_iob_num_sides" : 2,
+  "cgra_gpe_num_input_lut" : 3,
+  "cgra_gpe_max_delay_fg" : 8,
   "cgra_lg_max_init" : 20,
   "tile_num_column" : 2,
   "cgra_gib_track_reged_mode" : 1,
@@ -156,10 +194,13 @@
   "dma_lg_max_burst_size" : 6,
   "tlb_is_shared" : true,
   "spad_data_width" : 128,
+  "cgra_fg_gib_connect_flexibility" : [ 2, 2, 4 ],
   "cgra_cfg_addr_width_align" : 16,
   "cgra_gib_num_track" : 2,
   "rs_exe_queue_depth" : 4,
+  "cgra_fg_gib_track_reged_mode" : 1,
   "cgra_iob_ag_nest_levels" : 4,
+  "cgra_fg_enable" : true,
   "cgra_cfg_sram_add_reg" : false,
   "dumpOperationSet" : true,
   "cgra_cfg_addr_width" : 12,

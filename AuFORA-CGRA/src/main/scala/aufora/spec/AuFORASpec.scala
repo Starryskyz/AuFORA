@@ -14,6 +14,8 @@ import java.io.File
 // GPE Spec to support heterogeneous GPEs
 case class GpeSpec(
   max_delay : Int =  4, //10,    // max delay cycles of the DelayPipe
+  max_delay_fg : Int = 4,       // max delay cycles of the 1-bit fine-grained path
+  num_input_lut : Int = 3,      // LUT input count, 0 disables the LUT
   operations : ListBuffer[String] = ListBuffer( "PASS", "ADD", "SUB"),       // supported operations
 //  from_dir : List[Int] =  List(NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST),  // which directions the GPE inputs are from
 //  to_dir : List[Int] =  List(NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST)     // which directions the GPE outputs are to
@@ -22,7 +24,9 @@ case class GpeSpec(
 // IOB Spec to support heterogeneous IOBs
 case class IobSpec(
   mode : Int = SRAM_MODE,
-  max_delay : Int = 4 // 10    // max delay cycles of the DelayPipe
+  max_delay : Int = 4, // 10    // max delay cycles of the DelayPipe
+  has_io_fg : Boolean = true,
+  max_delay_fg : Int = 4
 )
 
 // GIB Spec to support heterogeneous GIBs
@@ -69,9 +73,9 @@ object AuFORASpec{
     "cgra_gpe_operations" -> ListBuffer("PASS", 
                                         "ADD", "SUB", "MUL", "SHL", "LSHR", "ASHR", "ACC", "ASUB", 
                                         "AND", "OR", 
-                                        "SLT", "SLE", "EQ",
+                                        "SLT", "SLE", "EQ", "NOT", 
                                         // /*"UDIV", "SDIV",*/
-                                        // "EQ", "NE", "ULE", "ULT", "SLT", "SLE",
+                                        "ULE", "ULT", "SLT", "SLE",
                                         "SEL", 
                                         "FMUL32", "FSUB32", "FADD32", "FACC32",
                                         // "FDIV32",
@@ -102,6 +106,14 @@ object AuFORASpec{
     // ),/// To support heterogeneous pe design ///Map[(Int, Int), ListBuffer[String]] 
 
     "cgra_gpe_max_delay" -> 10,
+    // 1-bit fine-grained predicate/LUT network
+    "cgra_fg_enable" -> true,
+    "cgra_gpe_num_input_lut" -> 3,
+    "cgra_gpe_max_delay_fg" -> 8,
+    "cgra_fg_gib_num_track" -> 2,
+    "cgra_fg_gib_track_reged_mode" -> 1,
+    "cgra_fg_gib_connect_flexibility" -> List(2, 2, 4),
+    "cgra_fg_gib_diag_iopin_connect" -> true,
     "cgra_gpe_in_from_dir" -> List(NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST),
     // "cgra_gpe_in_from_dir" -> List(NORTHWEST, NORTHEAST, SOUTHWEST),
     "cgra_gpe_out_to_dir" -> List(NORTHWEST, NORTHEAST, SOUTHWEST, SOUTHEAST),
@@ -115,6 +127,8 @@ object AuFORASpec{
     "cgra_iob_num_sides" -> 2,   // now only support top/bottom side
     "cgra_iob_mode" -> SRAM_MODE,        // 0: FIFO mode, 1: SRAM mode
     "cgra_iob_max_delay" -> 10,   // only valid for SRAM Mode
+    "cgra_iob_has_io_fg" -> true,
+    "cgra_iob_max_delay_fg" -> 8,
     "cgra_iob_ag_nest_levels" -> 4, // adora: 4 aufora: 3
     "cgra_iob_sram_add_reg" -> 2, // add pipeline register into the SRAM IF to improve timing, write/read latency, 0 : 0/1; 1 : 1/2; 2 : 1/3;
     "cgra_iob_sram_has_mask" -> true, // byte mask in the SRAM IF
@@ -188,7 +202,9 @@ object AuFORASpec{
         val operations = if(specificPEs.contains((i, j))) specificPEs((i,j)) /// modified by jhlou in 20250308
                          else attrs("cgra_gpe_operations").asInstanceOf[ListBuffer[String]]
         // val operations = attrs("cgra_gpe_operations").asInstanceOf[ListBuffer[String]]
-        gpes_spec(i).append(GpeSpec(max_delay, operations))
+        val maxDelayFg = attrs("cgra_gpe_max_delay_fg").asInstanceOf[Int]
+        val numInputLut = attrs("cgra_gpe_num_input_lut").asInstanceOf[Int]
+        gpes_spec(i).append(GpeSpec(max_delay, maxDelayFg, numInputLut, operations))
       }
     }
     // println("gpes_spec:", gpes_spec)
@@ -202,7 +218,9 @@ object AuFORASpec{
       for( j <- 0 until attrs("tile_num_column").asInstanceOf[Int]){
         val mode = attrs("cgra_iob_mode").asInstanceOf[Int]
         val maxDelay = attrs("cgra_iob_max_delay").asInstanceOf[Int]
-        iobs_spec(i).append(IobSpec(mode, maxDelay))
+        val hasIoFg = attrs("cgra_iob_has_io_fg").asInstanceOf[Boolean]
+        val maxDelayFg = attrs("cgra_iob_max_delay_fg").asInstanceOf[Int]
+        iobs_spec(i).append(IobSpec(mode, maxDelay, hasIoFg, maxDelayFg))
       }
     }
     attrs("cgra_iobs") = iobs_spec
